@@ -1,55 +1,55 @@
 import os
 import asyncio
+import requests
 from telethon import TelegramClient, events
 from telethon.sessions import StringSession
-import requests
 from dotenv import load_dotenv
-import os
 
+# Load .env variables
 load_dotenv()
-# ----- Telegram API Info -----
-api_id = int(os.getenv("TG_API_ID"))        # Your Telegram API ID
-api_hash = os.getenv("TG_API_HASH")         # Your Telegram API Hash
-session_str = os.getenv("TG_SESSION")       # Optional: Your saved session string
 
-# ----- Facebook Info -----
-fb_page_access_token = os.getenv("FB_ACCESS_TOKEN")  # Your page access token
-fb_page_id = os.getenv("FB_PAGE_ID")                # Your page ID
+# Telegram config
+api_id = int(os.getenv("TG_API_ID"))
+api_hash = os.getenv("TG_API_HASH")
+session_str = os.getenv("TG_SESSION")
+target_group = os.getenv("TG_GROUP")
 
-# ----- Telegram Group -----
-target_group = os.getenv("TG_GROUP")  # Group username or ID
+# Facebook config
+fb_page_access_token = os.getenv("FB_ACCESS_TOKEN")
+fb_page_id = os.getenv("FB_PAGE_ID")
 
-# Initialize Telegram client
-if session_str:
-    client = TelegramClient(StringSession(session_str), api_id, api_hash)
-else:
-    client = TelegramClient('session_name', api_id, api_hash)
+# Telegram client
+client = TelegramClient(StringSession(session_str), api_id, api_hash)
 
 async def main():
     await client.start()
     print("Telegram client started...")
+    print("Monitoring Telegram group...")
 
     @client.on(events.NewMessage(chats=target_group))
     async def handler(event):
-        if event.photo:
+        # Detect photos + image documents
+        if event.photo or (event.file and event.file.mime_type and event.file.mime_type.startswith("image/")):
             print("New photo detected!")
+
             file_path = await event.download_media()
             print(f"Photo downloaded to {file_path}")
-            
-            # Post to Facebook
-            with open(file_path, "rb") as f:
+
+            # Upload to Facebook WITHOUT caption
+            with open(file_path, "rb") as image:
                 response = requests.post(
                     f"https://graph.facebook.com/{fb_page_id}/photos",
-                    files={"source": f},
-                    data={"access_token": fb_page_access_token, "caption": event.message.message or ""}
+                    files={"source": image},
+                    data={"access_token": fb_page_access_token}
                 )
+
             if response.ok:
-                print("Photo posted to Facebook successfully!")
+                print("Photo uploaded to Facebook successfully")
             else:
-                print("Failed to post to Facebook:", response.text)
+                print("Facebook upload failed:", response.text)
+
             os.remove(file_path)
 
-    print("Monitoring Telegram group...")
     await client.run_until_disconnected()
 
 asyncio.run(main())
